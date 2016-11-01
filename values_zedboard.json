@@ -1,0 +1,25 @@
+{
+	"conf": {
+		"apbctrl": {
+			"hindex": 1
+		},
+		"mmu_cache": {
+			"ilram":{
+				"size": 1,
+				"start": 142
+			},
+			"dlram":{
+				"size": 1,
+				"start":143
+			}
+		},
+		"apbuart1":{
+			"index": 1,
+			"addr": 1
+		},
+		"ahbmem":{
+			"index": 0,
+			"addr" : 0
+		}
+	}
+}

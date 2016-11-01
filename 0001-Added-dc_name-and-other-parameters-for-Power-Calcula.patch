@@ -1,0 +1,679 @@
+From c2fd3e40ffbb6e2a233b388ad11345cfa1b37184 Mon Sep 17 00:00:00 2001
+From: Tobias Rust <t.rust@tu-bs.de>
+Date: Thu, 21 Apr 2016 11:19:40 +0200
+Subject: [PATCH 1/2] Added dc_name and other parameters for Power Calculation
+
+---
+ gaisler/ahbctrl/ahbctrl.cpp               | 12 +++++++++++-
+ gaisler/ahbctrl/ahbctrl.h                 | 13 +++++++++++++
+ gaisler/ahbmem/ahbmem.cpp                 | 11 +++++++++--
+ gaisler/ahbmem/ahbmem.h                   | 10 ++++++++++
+ gaisler/apbctrl/apbctrl.cpp               |  5 ++++-
+ gaisler/apbctrl/apbctrl.h                 |  7 +++++++
+ gaisler/gptimer/gptimer.cpp               |  8 +++++++-
+ gaisler/gptimer/gptimer.h                 |  3 +++
+ gaisler/irqmp/irqmp.cpp                   |  1 +
+ gaisler/irqmp/irqmp.h                     |  3 +++
+ gaisler/leon3/intunit/processor.cpp       |  1 +
+ gaisler/leon3/intunit/processor.hpp       |  5 +++++
+ gaisler/leon3/mmucache/dvectorcache.cpp   | 11 +++++++++++
+ gaisler/leon3/mmucache/dvectorcache.h     | 27 ++++++++++++++++++++++++++-
+ gaisler/leon3/mmucache/ivectorcache.cpp   |  8 ++++++++
+ gaisler/leon3/mmucache/ivectorcache.h     | 25 ++++++++++++++++++++++++-
+ gaisler/leon3/mmucache/mmu.cpp            |  5 +++++
+ gaisler/leon3/mmucache/mmu.h              |  5 +++++
+ gaisler/leon3/mmucache/mmu_cache_base.cpp |  3 ++-
+ gaisler/leon3/mmucache/mmu_cache_base.h   |  3 +++
+ gaisler/leon3/mmucache/vectorcache.h      |  2 ++
+ gaisler/mctrl/mctrl.cpp                   |  2 ++
+ gaisler/mctrl/mctrl.h                     |  2 ++
+ gaisler/memory/memorypower.cpp            | 24 +++++++++++++++++++++++-
+ gaisler/memory/memorypower.h              |  6 ++++++
+ 25 files changed, 193 insertions(+), 9 deletions(-)
+
+diff --git a/gaisler/ahbctrl/ahbctrl.cpp b/gaisler/ahbctrl/ahbctrl.cpp
+index fe5ba68..85f04d2 100644
+--- a/gaisler/ahbctrl/ahbctrl.cpp
++++ b/gaisler/ahbctrl/ahbctrl.cpp
+@@ -55,6 +55,7 @@ AHBCtrl::AHBCtrl(
+   g_fpnpen("fpnpen", fpnpen, m_generics),
+   g_mcheck("mcheck", mcheck, m_generics),
+   g_pow_mon("pow_mon",pow_mon, m_generics),
++  m_dc_name("dc_name", "ahbctrl", m_power),
+   arbiter_eval_delay(1, SC_PS),
+   busy(false),
+   robin(0),
+@@ -80,6 +81,10 @@ AHBCtrl::AHBCtrl(
+   dyn_read_energy_norm("dyn_read_energy_norm", 9.10714e-10, m_power),     // Normalized read energy input
+   dyn_write_energy_norm("dyn_write_energy_norm", 9.10714e-10, m_power),     // Normalized write energy input
+   sta_power("sta_power", 0.0, m_power),     // Static power output
++  no_of_masters("no_of_masters", 0.0, m_power),
++  no_of_slaves("no_of_slaves", 0.0, m_power),
++  val_of_clk("val_of_clk", 0.0, m_power),
++  t_diff("t_diff", 0.0, m_power),
+   int_power("int_power", 0.0, m_power),     // Internal power of module (dyn. switching independent)
+   swi_power("swi_power", 0.0, m_power),     // Switching power of module
+   power_frame_starting_time("power_frame_starting_time", SC_ZERO_TIME, m_power),
+@@ -1014,8 +1019,13 @@ void AHBCtrl::EndResponseThread() {
+ void AHBCtrl::start_of_simulation() {
+   // Get number of bindings at master socket (number of connected slaves)
+   num_of_slave_bindings = ahbOUT.size();
++  no_of_slaves = ahbOUT.size();
+   // Get number of bindings at slave socket (number of connected masters)
+   num_of_master_bindings = ahbIN.size();
++  no_of_masters = ahbIN.size();
++  // get clock period and overall sim time
++  val_of_clk = clock_cycle.to_seconds();
++
+ 
+   // Max. 16 AHB slaves allowed
+   assert(num_of_slave_bindings <= 16);
+@@ -1195,7 +1205,7 @@ gs::cnf::callback_return_type AHBCtrl::swi_power_cb(
+ // Print execution statistic at end of simulation
+ void AHBCtrl::end_of_simulation() {
+   double busy_cycles;
+-
++  t_diff=(sc_time_stamp() - power_frame_starting_time).to_seconds();
+   v::report << name() << " ********************************************" << v::endl;
+   v::report << name() << " * AHBCtrl Statistic:" << v::endl;
+   v::report << name() << " * ------------------" << v::endl;
+diff --git a/gaisler/ahbctrl/ahbctrl.h b/gaisler/ahbctrl/ahbctrl.h
+index 181ac18..900c5ba 100644
+--- a/gaisler/ahbctrl/ahbctrl.h
++++ b/gaisler/ahbctrl/ahbctrl.h
+@@ -172,6 +172,10 @@ class AHBCtrl : public BaseModule<DefaultBase>, public CLKDevice {
+ 
+     /// Enable power monitoring (Only TLM)
+     sr_param<bool> g_pow_mon;
++    ///DC shell name
++    sr_param<std::string> m_dc_name;
++    ///time diff
++    sr_param<double> t_diff;
+ 
+     const sc_time arbiter_eval_delay;
+ 
+@@ -300,6 +304,15 @@ class AHBCtrl : public BaseModule<DefaultBase>, public CLKDevice {
+     /// Dynamic power of module (activation independent)
+     sr_param<double> int_power;
+ 
++    /// No of Masters for Power Calculation
++    sr_param<double> no_of_masters;
++
++    /// No of Slaves for Power Calculation
++    sr_param<double> no_of_slaves;
++
++    /// Clock cycle for Power Calc
++    sr_param<double> val_of_clk;
++
+     /// Switching power of module
+     sr_param<double> swi_power;
+ 
+diff --git a/gaisler/ahbmem/ahbmem.cpp b/gaisler/ahbmem/ahbmem.cpp
+index 89835f3..d9c1a4c 100644
+--- a/gaisler/ahbmem/ahbmem.cpp
++++ b/gaisler/ahbmem/ahbmem.cpp
+@@ -51,6 +51,7 @@ AHBMem::AHBMem(const ModuleName nm,  // Module name
+     g_cacheable("cacheable", cacheable, m_generics),
+     g_wait_states("wait_states", wait_states, m_generics),
+     g_pow_mon("pow_mon", pow_mon, m_generics),
++    m_dc_name("dc_name", "ahbrom", m_power),
+     g_storage_type("storage", "ArrayStorage", m_generics),
+     sta_power_norm("sta_power_norm", 1269.53125, m_power),                  // Normalized static power input
+     int_power_norm("int_power_norm", 1.61011e-12, m_power),                 // Normalized internal power input
+@@ -59,11 +60,13 @@ AHBMem::AHBMem(const ModuleName nm,  // Module name
+     sta_power("sta_power", 0.0, m_power),           // Static power output
+     int_power("int_power", 0.0, m_power),           // Internal power of module (dyn. switching independent)
+     swi_power("swi_power", 0.0, m_power),           // Switching power of modules
++    no_of_bits("no_of_bits", 1.0, m_power),
+     power_frame_starting_time("power_frame_starting_time", SC_ZERO_TIME, m_power),
+     dyn_read_energy("dyn_read_energy", 0.0, m_power),             // Energy per read access
+     dyn_write_energy("dyn_write_energy", 0.0, m_power),           // Energy per write access
+     dyn_reads("dyn_reads", 0ull, m_power),            // Read access counter for power computation
+-    dyn_writes("dyn_writes", 0ull, m_power) {         // Write access counter for power computation
++    dyn_writes("dyn_writes", 0ull, m_power),
++    val_of_clk("val_of_clk", 0.0, m_power) {         // Write access counter for power computation
+   // haddr and hmask must be 12 bit
+   assert(!((g_haddr | g_hmask) >> 12));
+ 
+@@ -128,7 +131,8 @@ void AHBMem::init_generics() {
+ 
+   g_pow_mon.add_properties()
+     ("name", "Power Monitoring")
+-    ("If true enable power monitoring");
++    ("If true enable power monitoring")
++    ("dc_name","ahbmem");
+ 
+   g_storage_type.add_properties()
+     ("name", "Memory Storage Type")
+@@ -236,6 +240,9 @@ void AHBMem::before_end_of_elaboration() {
+ 
+ // Automatically called at the beginning of the simulation
+ void AHBMem::start_of_simulation() {
++  // Assigning values
++  val_of_clk = clock_cycle.to_seconds();
++  no_of_bits = (get_ahb_size() << 3);
+   // Initialize power model
+   if (g_pow_mon) {
+     power_model();
+diff --git a/gaisler/ahbmem/ahbmem.h b/gaisler/ahbmem/ahbmem.h
+index 716f48c..2d00da1 100644
+--- a/gaisler/ahbmem/ahbmem.h
++++ b/gaisler/ahbmem/ahbmem.h
+@@ -142,6 +142,12 @@ class AHBMem : public AHBSlave<>, public CLKDevice, public BaseMemory{
+     /// Stores the type of memory used
+     sr_param<std::string> g_storage_type;
+ 
++    ///DC shell name
++    sr_param<std::string> m_dc_name;
++
++    ///No of bits for Power Calc
++    sr_param<double> no_of_bits;
++
+   public:
+     /// Power Modeling Parameters
+ 
+@@ -183,6 +189,10 @@ class AHBMem : public AHBSlave<>, public CLKDevice, public BaseMemory{
+ 
+     /// Number of writes to memory (read & reset by monitor)
+     sr_param<uint64_t> dyn_writes;  // NOLINT(runtime/int)
++
++    /// Clock cycle for Power Calc
++    sr_param<double> val_of_clk;
++
+ };
+ 
+ #endif  // MODELS_AHBMEM_AHBMEM_H_
+diff --git a/gaisler/apbctrl/apbctrl.cpp b/gaisler/apbctrl/apbctrl.cpp
+index de7f653..f2a6052 100644
+--- a/gaisler/apbctrl/apbctrl.cpp
++++ b/gaisler/apbctrl/apbctrl.cpp
+@@ -28,7 +28,7 @@ APBCtrl::APBCtrl(
+     bool mcheck,                 // Check if there are any intersections between APB slave memory regions
+     uint32_t hindex,             // AHB bus index
+     bool pow_mon,                // Enable power monitoring
+-    AbstractionLayer ambaLayer) :
++    AbstractionLayer ambaLayer):
+   AHBSlave<>(nm,
+     hindex,
+     0x01,                        // vendor_id: Gaisler
+@@ -45,6 +45,7 @@ APBCtrl::APBCtrl(
+   g_hmask("hmask", hmask, m_generics),
+   g_mcheck("mcheck", mcheck, m_generics),
+   g_pow_mon("pow_mon", pow_mon, m_generics),
++  m_dc_name("dc_name", "apbctrl", m_power),
+   m_ambaLayer(ambaLayer),
+   num_of_bindings(0),
+   m_total_transactions("total_transactions", 0ull, m_counters),
+@@ -56,6 +57,7 @@ APBCtrl::APBCtrl(
+   sta_power("sta_power", 0.0, m_power),  // Static power output
+   int_power("int_power", 0.0, m_power),  // Internal power output
+   swi_power("swi_power", 0.0, m_power),  // Switching power output
++  no_of_slaves("no_of_slaves", 0.0, m_power), //No of slaves for power calc
+   dyn_read_energy("dyn_read_energy", 0.0, m_power),  // Energy per read access
+   dyn_write_energy("dyn_write_energy", 0.0, m_power),  // Energy per write access
+   dyn_reads("dyn_reads", 0ull, m_power),  // Read access counter for power computation
+@@ -290,6 +292,7 @@ void APBCtrl::end_of_elaboration() {
+ void APBCtrl::start_of_simulation() {
+   // Get number of bindings at master socket (number of connected slaves)
+   num_of_bindings = apb.size();
++  no_of_slaves = apb.size();
+ 
+   // max. 16 APB slaves allowed
+   assert(num_of_bindings <= 16);
+diff --git a/gaisler/apbctrl/apbctrl.h b/gaisler/apbctrl/apbctrl.h
+index 846df9c..9b90a25 100644
+--- a/gaisler/apbctrl/apbctrl.h
++++ b/gaisler/apbctrl/apbctrl.h
+@@ -209,6 +209,13 @@ class APBCtrl : public AHBSlave<>, public CLKDevice {
+ 
+     /// Number of writes to memory (read & reset by monitor)
+     sr_param<uint64_t> dyn_writes;  // NOLINT(runtime/int)
++
++    ///DC shell name
++    sr_param<std::string> m_dc_name;
++
++    ///No of Slaves for Power Calc
++    sr_param<double> no_of_slaves;
++
+ };
+ 
+ /// @}
+diff --git a/gaisler/gptimer/gptimer.cpp b/gaisler/gptimer/gptimer.cpp
+index 28b54f3..48cfd58 100644
+--- a/gaisler/gptimer/gptimer.cpp
++++ b/gaisler/gptimer/gptimer.cpp
+@@ -36,6 +36,7 @@ GPTimer::GPTimer(ModuleName name, unsigned int ntimers,
+     g_sbits("sbits", sbits, m_generics),
+     g_nbits("nbits", nbits, m_generics),
+     g_wdog_length("wdog", wdog, m_generics),
++    m_dc_name("dc_name", "gptimer", m_power),
+     powermon("powermon", powmon, m_generics),
+     g_sepirq("sepirq", sepirq, m_generics),
+     sta_power_norm("sta_power_norm", 2.46e+6, m_power),   // Normalized static power input
+@@ -137,7 +138,10 @@ void GPTimer::init_generics() {
+     ("range", "1..32")
+     ("vhdl_name", "nbits")
+     ("Defines the number of bits in the counters");
+-  
++//  powermon.add_properties()
++//    ("dc_name","gptimer");
++//  g_dc_name.add_properties()
++//   ("gptimer");  
+ }
+ 
+ void GPTimer::init_registers() {
+@@ -200,6 +204,8 @@ void GPTimer::start_of_simulation() {
+ void GPTimer::power_model() {
+   // Static power calculation (pW)
+   sta_power = sta_power_norm * g_ntimers;
++//  sta_power.add_properties()
++//    ("dc_name:gptimer");
+ 
+   // Cell internal power (uW)
+   int_power = int_power_norm * g_ntimers * 1/(clock_cycle.to_seconds());
+diff --git a/gaisler/gptimer/gptimer.h b/gaisler/gptimer/gptimer.h
+index a8b5b2b..4411204 100644
+--- a/gaisler/gptimer/gptimer.h
++++ b/gaisler/gptimer/gptimer.h
+@@ -196,6 +196,9 @@ class GPTimer : public APBSlave, public CLKDevice {
+   /// If zero the watchdog ist disabled.
+   sr_param<uint32_t> g_wdog_length;
+ 
++  ///String for the dc_shell name
++  sr_param<std::string> m_dc_name;
++
+   /// Enables the powermonitor capapbilities
+   sr_param<uint32_t> powermon;
+ 
+diff --git a/gaisler/irqmp/irqmp.cpp b/gaisler/irqmp/irqmp.cpp
+index 9589a51..b89bf27 100644
+--- a/gaisler/irqmp/irqmp.cpp
++++ b/gaisler/irqmp/irqmp.cpp
+@@ -41,6 +41,7 @@ Irqmp::Irqmp(ModuleName name,
+   m_irq_counter("irq_line_activity", 32, m_counters),
+   m_cpu_counter("cpu_line_activity", ncpu, m_counters),
+   m_pow_mon(powmon),
++  m_dc_name("dc_name", "irqmp", m_power),
+   sta_power_norm("sta_power_norm", 3.07e+8, m_power),           // Normalized static power of controller
+   int_power_norm("int_power_norm", 3.26e-10, m_power),           // Normalized internal power of controller
+   sta_power("sta_power", 0.0, m_power),           // Static power of controller
+diff --git a/gaisler/irqmp/irqmp.h b/gaisler/irqmp/irqmp.h
+index 47a5aeb..f493232 100644
+--- a/gaisler/irqmp/irqmp.h
++++ b/gaisler/irqmp/irqmp.h
+@@ -208,6 +208,9 @@ class Irqmp : public APBSlave, public CLKDevice {
+     /// Controller dynamic power
+     sr_param<double> int_power;
+ 
++    /// for dc shell name
++    sr_param<std::string> m_dc_name;
++
+     // ******************************************************
+     // Constant and mask definitions
+ 
+diff --git a/gaisler/leon3/intunit/processor.cpp b/gaisler/leon3/intunit/processor.cpp
+index b79cc06..6b04db6 100644
+--- a/gaisler/leon3/intunit/processor.cpp
++++ b/gaisler/leon3/intunit/processor.cpp
+@@ -352,6 +352,7 @@ leon3_funclt_trap::Processor_leon3_funclt::Processor_leon3_funclt(
+       sta_power("sta_power", 0.0, power), // Static power output
+       int_power("int_power", 0.0, power), // Internal power of module
+       swi_power("swi_power", 0.0, power), // Switching power of module
++      m_dc_name("dc_name", "iu3", power),
+       power_frame_starting_time("power_frame_starting_time", SC_ZERO_TIME, power),
+       dyn_instr_energy("dyn_instr_energy", 0.0, power), // average instruction energy
+       dyn_instr("dyn_instr", 0ull, power), // number of instructions
+diff --git a/gaisler/leon3/intunit/processor.hpp b/gaisler/leon3/intunit/processor.hpp
+index 638e57b..b03b30c 100644
+--- a/gaisler/leon3/intunit/processor.hpp
++++ b/gaisler/leon3/intunit/processor.hpp
+@@ -171,6 +171,11 @@ namespace leon3_funclt_trap{
+ 
+       /// Number of instructions processed
+       sr_param<uint64_t> numInstructions;
++
++      ///String for the dc_shell name
++      sr_param<std::string> m_dc_name;
++
++      
+     };
+ 
+ };
+diff --git a/gaisler/leon3/mmucache/dvectorcache.cpp b/gaisler/leon3/mmucache/dvectorcache.cpp
+index 0fef6f6..6687d8d 100644
+--- a/gaisler/leon3/mmucache/dvectorcache.cpp
++++ b/gaisler/leon3/mmucache/dvectorcache.cpp
+@@ -36,7 +36,11 @@ cache_if::t_cache_type dvectorcache::get_cache_type() {
+ 
+ // Calculate power/energy values from normalized input data
+ void dvectorcache::power_model() {
++  no_of_bits_dtag = 32 * m_number_of_vectors;
++  no_of_bits_ddata = pow(2.0,(double)m_setsize) * (m_sets + 1) * 8;
+ 
++  //no_of_setsize = m_setsize;
++  //no_of_sets = m_sets + 1;
+   // Static power = controller + itag ram + idata ram
+   sta_power = sta_power_norm +
+     sta_dtag_power_norm * m_number_of_vectors * 32 * (m_sets + 1) +
+@@ -93,5 +97,12 @@ void dvectorcache::start_of_simulation() {
+     power_model();
+ 
+   }
++
++}
++void dvectorcache::end_of_simulation() {
++  no_of_ddata_writes = dyn_data_writes;
++  no_of_ddata_reads = dyn_data_reads;
++  no_of_dtag_writes = dyn_tag_writes;
++  no_of_dtag_reads = dyn_tag_reads;
+ }
+ /// @}
+\ No newline at end of file
+diff --git a/gaisler/leon3/mmucache/dvectorcache.h b/gaisler/leon3/mmucache/dvectorcache.h
+index 010a98d..1054308 100644
+--- a/gaisler/leon3/mmucache/dvectorcache.h
++++ b/gaisler/leon3/mmucache/dvectorcache.h
+@@ -41,6 +41,8 @@ class dvectorcache : public vectorcache {
+   /// Automatically called at start of simulation
+   void start_of_simulation();
+ 
++  void end_of_simulation();
++
+   /// Calculate power/energy values from normalized input data
+   void power_model();
+ 
+@@ -119,6 +121,19 @@ class dvectorcache : public vectorcache {
+   /// Dynamic energy per ddata write access
+   sr_param<double> dyn_data_write_energy;
+ 
++  ///String for the dc_shell name
++  sr_param<std::string> m_dc_name;
++
++  ///no of bits for calc
++  sr_param<double> no_of_bits_dtag;
++  sr_param<double> no_of_bits_ddata;
++  sr_param<uint64_t> no_of_ddata_writes;
++  sr_param<uint64_t> no_of_ddata_reads;
++  sr_param<uint64_t> no_of_dtag_writes;
++  sr_param<uint64_t> no_of_dtag_reads;
++  ///sr_param<double> no_of_setsize;
++  ///sr_param<double> no_of_sets;
++
+   // Constructor
+   // args: sysc module name, pointer to AHB read/write methods (of parent), delay on read hit, delay on read miss (incr), number of sets, setsize in kb, linesize in b, replacement strategy
+   /// @brief Constructor of data cache
+@@ -169,7 +184,17 @@ class dvectorcache : public vectorcache {
+     dyn_tag_write_energy("dyn_write_energy", 0.0, dtag), // write energy dtag ram
+     ddata("ddata", power), // parameter array for ddata ram (sub-array of power)
+     dyn_data_read_energy("dyn_read_energy", 0.0, ddata), // read energy of ddata ram
+-    dyn_data_write_energy("dyn_write_energy", 0.0, ddata) // write energy of ddata ram
++    dyn_data_write_energy("dyn_write_energy", 0.0, ddata), // write energy of ddata ram
++    m_dc_name("dc_name","dcache0",power),
++    no_of_bits_ddata("no_of_bits_ddata", 0.0, power),
++    no_of_bits_dtag("no_of_bits_dtag", 0.0, power),
++    no_of_dtag_reads("dyn_tag_reads", 0ull, power), // number of itag reads
++    no_of_dtag_writes("dyn_tag_writes", 0ull, power), // number of itag writes
++    no_of_ddata_reads("dyn_data_reads", 0ull, power), // number of idata reads
++    no_of_ddata_writes("dyn_data_writes", 0ull, power)
++/*,
++    no_of_sets("no_of_sets",0.0,power),
++    no_of_setsize("no_of_setsize",0.0,power)*/
+ 
+       {
+         // Register power callback functions
+diff --git a/gaisler/leon3/mmucache/ivectorcache.cpp b/gaisler/leon3/mmucache/ivectorcache.cpp
+index dd3bdd1..c34d1dd 100644
+--- a/gaisler/leon3/mmucache/ivectorcache.cpp
++++ b/gaisler/leon3/mmucache/ivectorcache.cpp
+@@ -45,6 +45,8 @@ cache_if::t_cache_type ivectorcache::get_cache_type() {
+ 
+ // Calculate power/energy values from normalized input data
+ void ivectorcache::power_model() {
++  no_of_bits_itag = 32 * m_number_of_vectors;
++  no_of_bits_idata = pow(2.0,(double)m_setsize) * (m_sets + 1) * 8;
+ 
+   // Static power = controller + itag ram + idata ram
+   sta_power = sta_power_norm +
+@@ -103,4 +105,10 @@ void ivectorcache::start_of_simulation() {
+ 
+   }
+ }
++void ivectorcache::end_of_simulation() {
++  no_of_idata_writes = dyn_data_writes;
++  no_of_idata_reads = dyn_data_reads;
++  no_of_itag_writes = dyn_tag_writes;
++  no_of_itag_reads = dyn_tag_reads;
++}
+ /// @}
+diff --git a/gaisler/leon3/mmucache/ivectorcache.h b/gaisler/leon3/mmucache/ivectorcache.h
+index 0baefaa..1907a3b 100644
+--- a/gaisler/leon3/mmucache/ivectorcache.h
++++ b/gaisler/leon3/mmucache/ivectorcache.h
+@@ -45,6 +45,9 @@ class ivectorcache : public vectorcache {
+   // Automatically called at start of simulation
+   void start_of_simulation();
+ 
++  void end_of_simulation();
++
++
+   // Calculate power/energy values from normalized input data
+   void power_model();
+ 
+@@ -123,6 +126,18 @@ class ivectorcache : public vectorcache {
+   /// Dynamic energy per idata write access
+   sr_param<double> dyn_data_write_energy;
+ 
++  ///String for the dc_shell name
++  sr_param<std::string> m_dc_name;
++
++  ///no of bits for calc
++  sr_param<double> no_of_bits_itag;
++  sr_param<double> no_of_bits_idata;
++  sr_param<uint64_t> no_of_idata_writes;
++  sr_param<uint64_t> no_of_idata_reads;
++  sr_param<uint64_t> no_of_itag_writes;
++  sr_param<uint64_t> no_of_itag_reads;
++
++
+   // Constructor
+   // args: sysc module name, pointer to AHB read/write methods (of parent), delay on read hit, delay on read miss (incr), number of sets, setsize in kb, linesize in b, replacement strategy
+   /// @brief Constructor of data cache
+@@ -169,7 +184,15 @@ class ivectorcache : public vectorcache {
+     dyn_tag_write_energy("dyn_write_energy", 0.0, itag), // write energy itag ram
+     idata("idata", power), // parameter array for idata ram (sub-array of power)
+     dyn_data_read_energy("dyn_read_energy", 0.0, idata), // read energy idata ram
+-    dyn_data_write_energy("dyn_write_energy", 0.0, idata) // write energy idata ram
++    dyn_data_write_energy("dyn_write_energy", 0.0, idata), // write energy idata ram
++    m_dc_name("dc_name","icache0",power),
++    no_of_bits_idata("no_of_bits_idata", 0.0, power),
++    no_of_bits_itag("no_of_bits_itag", 0.0, power),
++    no_of_itag_reads("dyn_tag_reads", 0ull, power), // number of itag reads
++    no_of_itag_writes("dyn_tag_writes", 0ull, power), // number of itag writes
++    no_of_idata_reads("dyn_data_reads", 0ull, power), // number of idata reads
++    no_of_idata_writes("dyn_data_writes", 0ull, power)
++
+ 
+       {
+         // Register power callback functions
+diff --git a/gaisler/leon3/mmucache/mmu.cpp b/gaisler/leon3/mmucache/mmu.cpp
+index deaf820..f2d9cd5 100644
+--- a/gaisler/leon3/mmucache/mmu.cpp
++++ b/gaisler/leon3/mmucache/mmu.cpp
+@@ -64,6 +64,8 @@ mmu::mmu(ModuleName name, // sysc module name,
+             dyn_dtlb_write_energy("dyn_dtlb_write_energy", 0.0, dtlbram), // dtlb write energy
+             dyn_dtlb_reads("dyn_dtlb_reads", 0ull, dtlbram), // number of dtlb reads
+             dyn_dtlb_writes("dyn_dtlb_writes", 0ull, dtlbram), // number of dtlb writes
++            //testla("dyn_dtlb_writes", 0ull, power),
++            m_dc_name("dc_name","mmutw",power),
+ 	    clockcycle(10, sc_core::SC_NS) {
+ 
+     // The number of instruction and data tlbs must be in the range of 2-32
+@@ -1084,6 +1086,8 @@ void mmu::end_of_simulation() {
+   uint64_t total_ihits = 0;
+   uint64_t total_dhits = 0;
+ 
++
++
+   v::report << name() << "******************************************** " << v::endl;
+   v::report << name() << "* MMU statistic:                             " << v::endl;
+   v::report << name() << "* -------------------" << v::endl;
+@@ -1133,6 +1137,7 @@ void mmu::end_of_simulation() {
+   }
+ 
+   v::report << name() << " ******************************************** " << v::endl;
++  //testla = dyn_dtlb_writes;
+ 
+ }
+ 
+diff --git a/gaisler/leon3/mmucache/mmu.h b/gaisler/leon3/mmucache/mmu.h
+index d22ba31..6124c34 100644
+--- a/gaisler/leon3/mmucache/mmu.h
++++ b/gaisler/leon3/mmucache/mmu.h
+@@ -391,6 +391,11 @@ class mmu : public DefaultBase, public mmu_if {
+ 
+   /// Clock cycle time
+   sc_core::sc_time clockcycle;
++  
++  ///String for the dc_shell name
++  sr_param<std::string> m_dc_name;
++  ///Test
++  //sr_param<uint64_t> testla;
+ 
+ };
+ 
+diff --git a/gaisler/leon3/mmucache/mmu_cache_base.cpp b/gaisler/leon3/mmucache/mmu_cache_base.cpp
+index f9ecf6f..17c88d9 100644
+--- a/gaisler/leon3/mmucache/mmu_cache_base.cpp
++++ b/gaisler/leon3/mmucache/mmu_cache_base.cpp
+@@ -89,7 +89,8 @@ mmu_cache_base::mmu_cache_base(
+   dyn_read_energy("dyn_read_energy", 0.0, m_power), // Energy per read access
+   dyn_write_energy("dyn_write_energy", 0.0, m_power), // Energy per write access
+   dyn_reads("dyn_reads", 0ull, m_power), // Read access counter for power computation
+-  dyn_writes("dyn_writes", 0ull, m_power) // Write access counter for power computation
++  dyn_writes("dyn_writes", 0ull, m_power), // Write access counter for power computation
++  m_dc_name("dc_name","c0mmu", m_power)
+   {
+ 
+     wb_pointer = 0;
+diff --git a/gaisler/leon3/mmucache/mmu_cache_base.h b/gaisler/leon3/mmucache/mmu_cache_base.h
+index 81ab119..dcd00ae 100644
+--- a/gaisler/leon3/mmucache/mmu_cache_base.h
++++ b/gaisler/leon3/mmucache/mmu_cache_base.h
+@@ -296,6 +296,9 @@ class mmu_cache_base :
+   /// Number of writes to memory (read & reset by monitor)
+   sr_param<uint64_t> dyn_writes;    
+ 
++  /// DC_Name for power calculation:
++  sr_param<std::string> m_dc_name;
++
+   uint64_t globl_count;
+   
+ };
+diff --git a/gaisler/leon3/mmucache/vectorcache.h b/gaisler/leon3/mmucache/vectorcache.h
+index 2cfd787..92e0f5c 100644
+--- a/gaisler/leon3/mmucache/vectorcache.h
++++ b/gaisler/leon3/mmucache/vectorcache.h
+@@ -320,6 +320,8 @@ protected:
+ 
+   /// Enable power monitoring
+   bool m_pow_mon;
++  ///String for the dc_shell name
++  sr_param<std::string> m_dc_name;
+ 
+   /// @} Statistics
+   /// --------------------------------------------------------------------------
+diff --git a/gaisler/mctrl/mctrl.cpp b/gaisler/mctrl/mctrl.cpp
+index 258991b..19f72c2 100644
+--- a/gaisler/mctrl/mctrl.cpp
++++ b/gaisler/mctrl/mctrl.cpp
+@@ -96,6 +96,7 @@ Mctrl::Mctrl(
+   g_sdbits("sdbits", _sdbits, m_generics),
+   g_mobile("mobile", _mobile, m_generics),
+   g_sden("sden", _sden, m_generics),
++  m_dc_name("dc_name", "mctrl", m_power),
+   g_pow_mon("pow_mon", powermon, m_generics) {
+   init_apb(pindex,
+     0x04,                                        // ven: ESA
+@@ -256,6 +257,7 @@ void Mctrl::init_generics() {
+ 
+   g_pow_mon.add_properties()
+     ("name", "Enable power monitoring")
++    ("dc_name","(mctrl")
+     ("true - Enable default power monitor (report will be generated at the end of the simulation.");
+ }
+ 
+diff --git a/gaisler/mctrl/mctrl.h b/gaisler/mctrl/mctrl.h
+index 460eee2..e659c2d 100644
+--- a/gaisler/mctrl/mctrl.h
++++ b/gaisler/mctrl/mctrl.h
+@@ -299,6 +299,8 @@ class Mctrl : public AHBSlave<APBSlave>,
+     sr_param<int> g_mobile;
+     sr_param<int> g_sden;
+ 
++    /// for dc name:
++    sr_param<std::string> m_dc_name;
+     /// Power monitoring on/off
+     sr_param<bool> g_pow_mon;
+ 
+diff --git a/gaisler/memory/memorypower.cpp b/gaisler/memory/memorypower.cpp
+index 4311550..58f69c0 100644
+--- a/gaisler/memory/memorypower.cpp
++++ b/gaisler/memory/memorypower.cpp
+@@ -55,7 +55,9 @@ MemoryPower::MemoryPower(sc_module_name name,
+   dyn_read_energy("dyn_read_energy", 0.0, power),  // Energy per read access
+   dyn_write_energy("dyn_write_energy", 0.0, power),  // Energy per write access
+   dyn_reads("dyn_reads", 0ull, power),  // Read access counter for power computation
+-  dyn_writes("dyn_writes", 0ull, power) {  // Write access counter for power computation
++  dyn_writes("dyn_writes", 0ull, power),
++  no_of_bits("no_of_bits", 0.0, power),
++  m_dc_name("dc_name", "to be set", power) {  // Write access counter for power computation
+   // Register power callback functions
+   if (m_pow_mon) {
+     GC_REGISTER_TYPED_PARAM_CALLBACK(&swi_power, gs::cnf::pre_read, MemoryPower, swi_power_cb);
+@@ -74,6 +76,26 @@ MemoryPower::~MemoryPower() {
+ 
+ void MemoryPower::power_model() {
+   if (m_pow_mon) {
++
++    if (get_type_name()=="rom")
++    {
++      m_dc_name = "ahbrom";
++    }
++    else if (get_type_name() =="io")
++    {
++      m_dc_name = "(iopadv";
++    } 
++    else if (get_type_name() =="sram")
++    {
++      m_dc_name = "sr1";
++    }  
++    else if (get_type_name() =="sdram")
++    {
++      m_dc_name = "sdram";
++    };
++
++    no_of_bits = (get_bsize() << 3);
++
+     // Static power calculation (pW)
+     sta_power = sta_power_norm * (get_bsize() << 3);
+ 
+diff --git a/gaisler/memory/memorypower.h b/gaisler/memory/memorypower.h
+index 2b3f941..5e8d663 100644
+--- a/gaisler/memory/memorypower.h
++++ b/gaisler/memory/memorypower.h
+@@ -118,6 +118,12 @@ class MemoryPower : public MEMDevice, public CLKDevice, public BaseMemory {
+     /// Number of writes to memory (read & reset by monitor)
+     sr_param<uint64_t> dyn_writes;
+ 
++    /// dc name
++    sr_param<std::string> m_dc_name;
++
++    ///
++    sr_param<double> no_of_bits;
++
+   private:
+     /// Offset for dyn_reads
+     unsigned long long dyn_reads_offset;
+-- 
+1.9.1
+

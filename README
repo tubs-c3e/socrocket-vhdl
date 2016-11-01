@@ -1,0 +1,179 @@
+This ReadMe contains general information on the minimal and ZedBoard design.
+See Readme_Zedboard.txt for additional information 
+- how to load the VHDL design onto the ZedBoard 
+- how to create a power report within Vivado
+
+
+
+Table of contents:
+1 Directory structure
+2 Use
+2.1 Generating the VHDL design
+2.2 Simulating the VHDL with Modelsim or Questasim
+2.3 Generating a vcd file
+3 Troubleshooting regarding Xilinx Vivado on Ubuntu 14.04 LTS
+
+
+
+<////////////////////>
+
+1.) Directory structure
+
+NEW:
+
+grlib: contains the GRLIB changes, further readmes in there
+
+power: contains the power script, the power report to csv function and two example powers
+
+SysCtoVHDL: contains all 6 templates and Henriks original template
+
+platforms: Deprecated, not used anymore
+
+waf: Deprecrated/never used by me
+
+
+
+Files in this folder: 
+
+- Patch files for SoCRocket for commit 335a74564bfebc95d7de1a7927218b71ab7a086a:
+	- patch-powercalcparams.patch
+	- 0001-Added-dc_name-and-other-parameters-for-Power-Calcula.patch
+	- 0002-Trailing-whitespaces-removed.patch
+
+- Start scripts:
+	- start_asic.py for the ASIC design
+	- start_dcminimal32.py for a minimal design for SAED32
+	- start_dcminimal90.py for a minimal design for SAED90nm
+	- start_leon3mp.py for the leon3mp based template
+	- start_mindsgn.py for the leon3-minimal template
+	- start_zedboard.py for the ZedBoard based template
+
+- Values json files:
+	- values_asic.json for the JSON design
+	- values_dcminimal.json for both dc-minimal designs
+	- values_leon3mp.json for the leon3mp design
+	- values_minimal.json for the minimal design
+	- values_zedboard.json for the ZedBoard design.
+
+
+	
+
+SET THE GRLIB PATH THROUGH:
+    "all_values['GRLIB_PATH']=os.environ.get('PATH-TO-GRLIB')"
+    in the scripts of SysCtoVHDL
+
+Some designs use finallib_alpha and some grlib-gpl-1.3.7-b4144
+
+Use power script like this, from the main socrocket directory:
+./core/tools/execute leon3mp sdram hello -s vhdl/power/new_power.py
+
+Use VHDL scripts with 
+./core/tools/execute leon3mp sdram hello -s vhdl/start_design.py -j vhdl/values_for-design.py
+
+The VHDL designs will be created in vhdl/VHDL/designs/
+
+Power script: 
+- the power script will create the files test1.json and testitems.json
+	- test1.json: All values created from readPropertyDict()
+	- testitems.json: All values in the out dict
+
+
+
+
+OLD:
+
+The following GRLIB were used: grlib-gpl-1.3.7-b4144 >
+And /lscratch/trust/finallib_alpha - a variation of said library. 
+GRLIB has to be in same directory as socrocket-core for everything to work.
+
+In vhdl/ you will find:
+- The starting scripts for the ZedBoard and minimal design, "start_mindsgn.py" & "start_zedboard.py" 
+	| Use with "./core/tools/execute -s" to generate minimal or ZedBoard VHDL design of the SystemC design.
+
+- The files "values_minimal.json" and "values_zedboard.json" 
+	| Use with "./core/tools/execute -j" to change some values, so that the VHDL design of the used design works. 
+
+In vhdl/SysCtoVHDL/ you will find:
+- The folders "minimal_template", "zedboard_template" and "old_leon3mp_template"
+	| "minimal_template" contains the template for the minimal design
+	| "zedboard_template" contains the template for the zedbaord design
+	| "old_leon3mp_template" contains the unchanged template by Henrik Lange. The other 2 templates derived from this template.
+
+- The python scripts "script_original.py", "script_mindsgn.py" & "script_zedboard.py"
+	| "script_original.py" is the original script by Henrik Lange
+	| The other two are derived from Henrik's Script and changed accordingly to match the minimal and zedboard designs file structure
+
+
+
+<////////////////////>
+
+2.) Use
+
+2.1) Generating the VHDL design
+
+
+Within socrocket-core/ use:
+"./core/tools/execute leon3mp sdram hello -j vhdl/values_minimal.json -s vhdl/start_mindsgn.py" to generate the minimal design. 
+or 
+"./core/tools/execute leon3mp sdram hello -j vhdl/values_zedboard.json -s vhdl/start_zedboard.py" to generate the ZedBoard design. 
+
+You can change, add or delete values from "values_(...).json" files. Note that they are now configured, so that created VHDL design works. Some values needed change to accomondate for the  differences between SystemC and GRLIB design. If you change any values, note that the created VHDL design may not work.
+
+Currently you have to delete the "mctrl" section of the "values_minimal.json" to make the SystemC simulation itself work. Generating the VHDL design is not a problem. This is for testing purposes and subject to change.
+
+
+
+2.2) Simulating the VHDL design with Modelsim or Questasim 
+
+
+Go to "vhdl/VHDL/designs/leon3-minimal" for the minimal design or to "vhdl/VHDL/designs/leon3-digilent-xc7z020" for the ZedBoard design.
+
+Start the simulation of the testbench by executing "vsim testbench"
+
+Type "run -all" inside of ModelSim/Questasim to start the simulation.
+
+The simulation should stop with this or a similar message:
+
+# Test passed, halting with IU error mode
+# 
+# ** Failure: *** IU in error mode, simulation halted ***
+	
+
+
+2.3) Generating a vcd file from the simulation
+
+
+Before the start of the simulation you have to create a vcd file via "vcd file filename.vcd".
+Then you have to add the signals you want to track via "vcd add".
+To add all signals do "vcd add -r testbench/*". This currently ONLY works in ModelSim. The signals of timer0 (gptimer) cause Questasim to crash 
+After simulating the design do "vcd flush" or simply close modelsim.
+
+For both designs you can also do "do vcd.do" inside of ModelSim to create a vcd file called vcddump.vhd and add all signals to the vcd file.
+
+"vcd2.do" and "vcd_minimal" can be used as template to just add specific signals of the minimal design to the vcd file.
+"vcd_zedboard.do" can be used as template to just add specific signals of the ZedBoard design to the vcd file.s
+
+
+
+<////////////////////>
+
+3.) Troubleshooting regarding Xilinx Vivado on Ubuntu 14.04 LTS
+
+
+
+I had an error message that went something like this: "[VIVADO 12-106] java.lang.NumberFormatException: For input string: "0,01"[...]"
+
+For reference here: https://forums.xilinx.com/t5/Installation-and-Licensing/Run-Vivado-2013-4-on-Debian/m-p/482774
+
+I did point 1) and 2) of the suggested list. Vivado then worked properly.
+
+1)
+$dpkg-reconfigure dash
+
+Select bash as your default shell
+
+2)
+
+$sudo apt-get install openjdk-7-jdk
+$mv /opt/Xilinx/Vivado/2013.4/tps/lnx64/jre/lib/amd64/server/libjvm.so /opt/Xilinx/Vivado/2013.4/tps/lnx64/jre/lib/amd64/server/libjvm.so.old
+$ln -s /usr/lib/jvm/java-7-openjdk-amd64/jre/lib/amd64/server/libjvm.so /opt/Xilinx/Vivado/2013.4/tps/lnx64/jre/lib/amd64/server/libjvm.so

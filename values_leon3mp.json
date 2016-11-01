@@ -1,0 +1,18 @@
+{
+	"conf": {
+		"mmu_cache": {
+			"ilram":{
+				"size": 1,
+				"start": 142
+			},
+			"dlram":{
+				"size": 1,
+				"start":143
+			}
+		},
+		"ahbmem":{
+			"index": 6,
+			"addr" : 0
+		}
+	}
+}

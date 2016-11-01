@@ -1,0 +1,211 @@
+This ReadMe contains information on how to create a power report within Vivado and how to use the VHDL design on the ZedBoard itself.
+
+
+Table of contents:
+1 Creating a Power Report within Vivado
+2 How to get the VHDL design running on the ZedBoard
+3 Troubleshooting regarding Xilinx SDK and Gaisler GRMON2 on Ubuntu 14.04 LTS
+
+
+
+
+<////////////////////>
+
+1.) Creating a Power Report within Vivado
+
+
+
+Go to "vhdl/VHDL/designs/leon3-digilent-xc7z020" and start Vivado via "make vivado-launch".
+
+Click on Run Implementation. This may take a while. When prompted, open the implemented design. Then click on report power and add the vcd file under "Switching". Run the power analysis afterwards.
+
+You can also run the power report on the synthesized design as well.
+
+
+<////////////////////>
+
+2.) How to get the VHDL design running on the ZedBoard
+
+
+In addition to Vivado and Questa/Modelsim you also need:
+- The Xilinx SDK to program the ZedBoard
+- GRMON2 from Gaisler (http://www.gaisler.com/index.php/downloads/debug-tools) to evaluate the programmed design
+
+Within Vivado click on "generate Bitstream" and wait for the bitstream to be generated. Alternatively just use "make vivado" in the terminal. 
+
+For the next step you need fo source the Xilinx SDK settings. After sourcing them you can't execute the SystemC simulation in the same terminal anymore, be aware of that. To upload your data onto the ZedBoard simply use "make program-zedboard"
+
+Switch to the GRMON2 folder to verify the design. Execute "./grmon -digilent". The output should be something like this:
+
+The output should be something like this:
+
+JTAG chain (2): xc7x020 zynq7000_arm_dap 
+  GRLIB build version: 4144
+  Detected frequency:  83 MHz
+  
+  Component                            Vendor
+  LEON3 SPARC V8 Processor             Cobham Gaisler
+  JTAG Debug Link                      Cobham Gaisler
+  Generic AHB ROM                      Cobham Gaisler
+  AHB/APB Bridge                       Cobham Gaisler
+  LEON3 Debug Support Unit             Cobham Gaisler
+  Xilinx MIG DDR2 Controller           Cobham Gaisler
+  Generic UART                         Cobham Gaisler
+  Multi-processor Interrupt Ctrl.      Cobham Gaisler
+  Modular Timer Unit                   Cobham Gaisler
+  General Purpose I/O port             Cobham Gaisler
+  AHB Status Register                  Cobham Gaisler
+  
+  Use command 'info sys' to print a detailed report of attached cores
+
+----------------
+
+Then use "info sys", the output should be:
+
+--
+
+grmon2> info sys
+  cpu0      Cobham Gaisler  LEON3 SPARC V8 Processor    
+            AHB Master 0
+  ahbjtag0  Cobham Gaisler  JTAG Debug Link    
+            AHB Master 1
+  adev2     Cobham Gaisler  Generic AHB ROM    
+            AHB: 00000000 - 00100000
+  apbmst0   Cobham Gaisler  AHB/APB Bridge    
+            AHB: 80000000 - 80100000
+  dsu0      Cobham Gaisler  LEON3 Debug Support Unit    
+            AHB: 90000000 - A0000000
+            AHB trace: 128 lines, 32-bit bus
+            CPU0:  win 8, hwbp 2, itrace 128, V8 mul/div, srmmu, lddel 1
+                   stack pointer 0x3ffffff0
+                   icache 2 * 8 kB, 32 B/line 
+                   dcache 2 * 4 kB, 32 B/line , snoop tags
+  mig0      Cobham Gaisler  Xilinx MIG DDR2 Controller    
+            AHB: 40000000 - 50000000
+            APB: 80000000 - 80000100
+            SDRAM: 0 Mbyte
+  uart0     Cobham Gaisler  Generic UART    
+            APB: 80000100 - 80000200
+            IRQ: 2
+            Baudrate 38425, FIFO debug mode
+  irqmp0    Cobham Gaisler  Multi-processor Interrupt Ctrl.    
+            APB: 80000200 - 80000300
+  gptimer0  Cobham Gaisler  Modular Timer Unit    
+            APB: 80000300 - 80000400
+            IRQ: 8
+            8-bit scalar, 2 * 32-bit timers, divisor 83
+  gpio0     Cobham Gaisler  General Purpose I/O port    
+            APB: 80000800 - 80000900
+  ahbstat0  Cobham Gaisler  AHB Status Register    
+            APB: 80000F00 - 80001000
+            IRQ: 7
+
+
+
+<////////////////////>
+
+3.) Troubleshooting regarding Xilinx SDK and Gaisler GRMON2 on Ubuntu 14.04 LTS
+
+
+
+For the Xilinx SDK I had to the following:
+
+(error message was: fatal error: xparameters_ps.h: No such file or directory)
+
+$ cd /usr/bin
+$ sudo ln -s make gmake
+
+I think there were some libs missing too, but those were displayed and easily installed.	
+
+
+
+
+For GRMON2:
+
+First:
+
+$wget http://www.gaisler.com/anonftp/grmon/grmon-eval-x.x.xx.tar.gz // You can find the current version here: http://www.gaisler.com/index.php/downloads/debug-tools
+$tar -xzvf grmon-eval-2.0.65.tar.gzf
+$export GRMON_SHARE=/path/to/grmon/linux/share
+
+Warning: GRMON2 is compiled on/for 32Bit-Systems. 32Bit-libraries need to be installed.
+
+For example I had to install:
+
+$sudo apt-get install libc6-i386 lib32stdc++6 lib32gcc1 lib32ncurses5 lib32z1
+$sudo apt-get install libnspr4:i386
+
+Other libraries that need installation will be displayed.
+
+
+If you want to connect to the ZedBoard via USB you need the following command as stated above:
+
+$./grmon -digilent
+
+If you get the error message "missing libdabs.so" (or similar), then the digilent drivers are missing.
+You have to install the 32Bit version of the drivers, because GRMON2 won't be able to work with the 64Bit version.
+If the script for the 32Bit drivers is not working, do the following:
+
+(I had the standalone version of the Xilinx SDK installed, it may be a different folder structure depending on your installation)
+
+$cd /opt/Xilinx/SDK/2013.4/common/bin/lin/digilent   // important: not lin64! 
+
+Then:
+
+$sudo su
+apt-get install libusb-1.0-0:i386    //if not installed already
+
+mkdir -p /usr/local/lib/digilent/adept
+cp -fd digilent.adept.runtime_2.13.1-i686/lib/* /usr/local/lib/digilent/adept
+chmod -R 755 /usr/local/lib/digilent/adept
+cp -f digilent.adept.runtime_2.13.1-i686/digilent-adept-libraries.conf /etc/ld.so.conf.d
+chmod 644 /etc/ld.so.conf.d/digilent-adept-libraries.conf
+/sbin/ldconfig
+
+cd digilent.adept.runtime_2.13.1-i686/
+
+mkdir -p /usr/local/share/digilent/data/firmware
+cp -f data/firmware/*.HEX /usr/local/share/digilent/data/firmware
+cp -f data/firmware/*.so /usr/local/share/digilent/data/firmware
+chmod 644 /usr/local/share/digilent/data/firmware/*.HEX
+chmod 755 /usr/local/share/digilent/data/firmware/*.so
+cp -f data/jtscdvclist.txt /usr/local/share/digilent/data
+chmod 644 /usr/local/share/digilent/data/jtscdvclist.txt
+cp -f digilent-adept.conf /etc/digilent-adept.conf
+chmod 644 /etc/digilent-adept.conf
+mkdir -p /usr/local/share/digilent/data/xpla3
+cp -f data/xpla3/*.map /usr/local/share/digilent/data/xpla3
+chmod 644 /usr/local/share/digilent/data/xpla3/*.map
+mkdir -p /usr/local/share/digilent/data/xbr
+cp -f data/xbr/*.map /usr/local/share/digilent/data/xbr
+chmod 644 /usr/local/share/digilent/data/xbr/*.map
+mkdir -p /usr/local/sbin
+cp -f bin/dftdrvdtch /usr/local/sbin
+chmod 755 /usr/local/sbin/dftdrvdtch
+cp 52-digilent-usb.rules /etc/udev/rules.d/
+chmod 644 /etc/udev/rules.d/52-digilent-usb.rules
+/sbin/udevadm control --reload-rules
+
+mkdir -p /usr/local/lib
+cp ftdi.drivers_1.0.4-i686/lib/libftd2xx.so.1.0.4 /usr/local/lib/
+chmod 755 /usr/local/lib/libftd2xx.so.1.0.4
+cd /usr/local/lib
+ln -fs libftd2xx.so.1.0.4 libftd2xx.so
+ln -fs libftd2xx.so.1.0.4 libftd2xx.so.1
+echo "# Path to libftd2xx" > "/etc/ld.so.conf.d/ftdi-drivers.conf"
+echo "/usr/local/lib" >> "/etc/ld.so.conf.d/ftdi-drivers.conf"
+/sbin/ldconfig
+
+
+
+Now connecting to the ZedBoard should work!
+
+
+
+
+
+References:
+1) https://forums.xilinx.com/t5/Embedded-Development-Tools/Linux-SDK-fatal-error-xparameters-ps-h-No-such-file-or-directory/td-p/399141 Message 4
+2) http://gumdaeng.com/2015/07/25/running-leon3-on-zedboard-tutorial/ (KR)
+3) http://gumdaeng.com/2015/07/23/20150723/ (KR)
+4) http://comments.gmane.org/gmane.comp.hardware.opencores.leon-sparc/18501

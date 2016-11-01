@@ -1,0 +1,71 @@
+From 8a2c984a2a8785cce07980308ed166885142cc5e Mon Sep 17 00:00:00 2001
+From: Tobias Rust <t.rust@tu-bs.de>
+Date: Thu, 21 Apr 2016 11:39:14 +0200
+Subject: [PATCH 2/2] Trailing whitespaces removed
+
+---
+ gaisler/gptimer/gptimer.cpp         | 2 +-
+ gaisler/leon3/intunit/processor.hpp | 1 -
+ gaisler/leon3/mmucache/mmu.h        | 2 +-
+ gaisler/memory/memorypower.cpp      | 4 ++--
+ 4 files changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/gaisler/gptimer/gptimer.cpp b/gaisler/gptimer/gptimer.cpp
+index 48cfd58..14039d9 100644
+--- a/gaisler/gptimer/gptimer.cpp
++++ b/gaisler/gptimer/gptimer.cpp
+@@ -141,7 +141,7 @@ void GPTimer::init_generics() {
+ //  powermon.add_properties()
+ //    ("dc_name","gptimer");
+ //  g_dc_name.add_properties()
+-//   ("gptimer");  
++//   ("gptimer");
+ }
+ 
+ void GPTimer::init_registers() {
+diff --git a/gaisler/leon3/intunit/processor.hpp b/gaisler/leon3/intunit/processor.hpp
+index b03b30c..383ddbb 100644
+--- a/gaisler/leon3/intunit/processor.hpp
++++ b/gaisler/leon3/intunit/processor.hpp
+@@ -175,7 +175,6 @@ namespace leon3_funclt_trap{
+       ///String for the dc_shell name
+       sr_param<std::string> m_dc_name;
+ 
+-      
+     };
+ 
+ };
+diff --git a/gaisler/leon3/mmucache/mmu.h b/gaisler/leon3/mmucache/mmu.h
+index 6124c34..fdc151c 100644
+--- a/gaisler/leon3/mmucache/mmu.h
++++ b/gaisler/leon3/mmucache/mmu.h
+@@ -391,7 +391,7 @@ class mmu : public DefaultBase, public mmu_if {
+ 
+   /// Clock cycle time
+   sc_core::sc_time clockcycle;
+-  
++
+   ///String for the dc_shell name
+   sr_param<std::string> m_dc_name;
+   ///Test
+diff --git a/gaisler/memory/memorypower.cpp b/gaisler/memory/memorypower.cpp
+index 58f69c0..982fa6c 100644
+--- a/gaisler/memory/memorypower.cpp
++++ b/gaisler/memory/memorypower.cpp
+@@ -84,11 +84,11 @@ void MemoryPower::power_model() {
+     else if (get_type_name() =="io")
+     {
+       m_dc_name = "(iopadv";
+-    } 
++    }
+     else if (get_type_name() =="sram")
+     {
+       m_dc_name = "sr1";
+-    }  
++    }
+     else if (get_type_name() =="sdram")
+     {
+       m_dc_name = "sdram";
+-- 
+1.9.1
+
